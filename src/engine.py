@@ -28,6 +28,7 @@ class Engine(object):
         if self.config['use_cuda'] is True:
             users, items, ratings = users.cuda(), items.cuda(), ratings.cuda()
         self.opt.zero_grad()
+
         ratings_pred = self.model(users, items)
         loss = self.crit(ratings_pred.view(-1), ratings)
         loss.backward()
@@ -74,10 +75,10 @@ class Engine(object):
                                  negative_users.data.view(-1).tolist(),
                                  negative_items.data.view(-1).tolist(),
                                  negative_scores.data.view(-1).tolist()]
-        hit_ratio, ndcg = self._metron.cal_hit_ratio(), self._metron.cal_ndcg()
+        hit_ratio, ndcg, mapatk = self._metron.cal_hit_ratio(), self._metron.cal_ndcg(), self._metron.cal_map()
         self._writer.add_scalar('performance/HR', hit_ratio, epoch_id)
         self._writer.add_scalar('performance/NDCG', ndcg, epoch_id)
-        print('[Evluating Epoch {}] HR = {:.4f}, NDCG = {:.4f}'.format(epoch_id, hit_ratio, ndcg))
+        print('[Evluating Epoch {}] HR = {:.4f}, NDCG = {:.4f}, MAP = {:.4f}'.format(epoch_id, hit_ratio, ndcg, mapatk))
         return hit_ratio, ndcg
 
     def save(self, alias, epoch_id, hit_ratio, ndcg):

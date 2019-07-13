@@ -1,6 +1,7 @@
 import math
 import pandas as pd
-
+import ml_metrics as metrics
+from collections import OrderedDict
 
 class MetronAtK(object):
     def __init__(self, top_k):
@@ -48,6 +49,17 @@ class MetronAtK(object):
         top_k = full[full['rank']<=top_k]
         test_in_top_k =top_k[top_k['test_item'] == top_k['item']]  # golden items hit in the top_K items
         return len(test_in_top_k) * 1.0 / full['user'].nunique()
+
+    def cal_map(self):
+        """Mean Average Precision @ K"""
+        full, top_k = self._subjects, self._top_k
+        top_k = full[full['rank']<=top_k].groupby('user').aggregate(lambda x: tuple(x))
+        #print(top_k['item'].apply(lambda x: list(OrderedDict.fromkeys(x))))
+        #print(top_k['test_item'].apply(lambda x: list(OrderedDict.fromkeys(x))))
+        mapatk = metrics.mapk(top_k['test_item'].apply(lambda x: list(OrderedDict.fromkeys(x))).values.tolist(), top_k['item'].apply(lambda x: list(OrderedDict.fromkeys(x))).values.tolist(), self._top_k)
+        #mapatk = metrics.mapk(top_k['test_item'], top_k['item'], k)
+        return mapatk
+        #return mapatk * 1.0 / full['user'].nunique()
 
     def cal_ndcg(self):
         full, top_k = self._subjects, self._top_k

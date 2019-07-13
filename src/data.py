@@ -63,9 +63,11 @@ class SampleGenerator(object):
 
     def _split_loo(self, ratings):
         """leave one out train/test split """
+
         ratings['rank_latest'] = ratings.groupby(['userId'])['timestamp'].rank(method='first', ascending=False)
         test = ratings[ratings['rank_latest'] == 1]
         train = ratings[ratings['rank_latest'] > 1]
+
         assert train['userId'].nunique() == test['userId'].nunique()
         return train[['userId', 'itemId', 'rating']], test[['userId', 'itemId', 'rating']]
 
@@ -73,23 +75,37 @@ class SampleGenerator(object):
         """return all negative items & 100 sampled negative items"""
         interact_status = ratings.groupby('userId')['itemId'].apply(set).reset_index().rename(
             columns={'itemId': 'interacted_items'})
-        interact_status['negative_items'] = interact_status['interacted_items'].apply(lambda x: self.item_pool - x)
-        interact_status['negative_samples'] = interact_status['negative_items'].apply(lambda x: random.sample(x, 99))
+
+        samp = interact_status['interacted_items']
+
+        interact_status['negative_items'] = samp.apply(lambda x: random.sample((self.item_pool - x), 10000))
+
+        #interact_status['negative_items'].loc[interact_status['negative_items'].isnull()] = interact_status['negative_items'].loc[interact_status['negative_items'].isnull()].apply(lambda x: [])
+
+
+        interact_status['negative_samples'] = interact_status['negative_items'].apply(lambda x: random.sample(x, 99) if(len(x)> 99) else x)
+
         return interact_status[['userId', 'negative_items', 'negative_samples']]
 
     def instance_a_train_loader(self, num_negatives, batch_size):
         """instance train loader for one training epoch"""
         users, items, ratings = [], [], []
-        train_ratings = pd.merge(self.train_ratings, self.negatives[['userId', 'negative_items']], on='userId')
-        train_ratings['negatives'] = train_ratings['negative_items'].apply(lambda x: random.sample(x, num_negatives))
+
+        train_ratings = pd.merge(self.train_ratings, self.negatives[['userId', 'negative_items']], on='userId') #, how='outer')
+        #train_ratings['negative_items'].loc[train_ratings['negative_items'].isnull()] = train_ratings['negative_items'].loc[train_ratings['negative_items'].isnull()].apply(lambda x: [])
+        print("train size  : " + str(train_ratings.size))
+        print(train_ratings)
+        train_ratings['negatives'] = train_ratings['negative_items'].apply(lambda x: random.sample(x, num_negatives) if(len(x)> num_negatives) else x)
+        print(train_ratings['negatives'])
         for row in train_ratings.itertuples():
             users.append(int(row.userId))
             items.append(int(row.itemId))
             ratings.append(float(row.rating))
-            for i in range(num_negatives):
-                users.append(int(row.userId))
-                items.append(int(row.negatives[i]))
-                ratings.append(float(0))  # negative samples get 0 rating
+            if (len(row.negatives) > 0):
+                for i in range(num_negatives):
+                    users.append(int(row.userId))
+                    items.append(int(row.negatives[i]))
+                    ratings.append(float(0))  # negative samples get 0 rating
         dataset = UserItemRatingDataset(user_tensor=torch.LongTensor(users),
                                         item_tensor=torch.LongTensor(items),
                                         target_tensor=torch.FloatTensor(ratings))
@@ -98,7 +114,8 @@ class SampleGenerator(object):
     @property
     def evaluate_data(self):
         """create evaluate data"""
-        test_ratings = pd.merge(self.test_ratings, self.negatives[['userId', 'negative_samples']], on='userId')
+        ratings = self.test_ratings
+        test_ratings = pd.merge(ratings, self.negatives[['userId', 'negative_samples']], on='userId')
         test_users, test_items, negative_users, negative_items = [], [], [], []
         for row in test_ratings.itertuples():
             test_users.append(int(row.userId))
